@@ -1,21 +1,27 @@
 packer {
   required_plugins {
     docker = {
+      # usar 1.0.8
       version = ">= 1.0.8"
       source = "github.com/hashicorp/docker"
     }
   }
 }
 
-variable "dockerhub_login" {
+variable "aws_region" {
   type    = string
-  default = "${env("DOCKERHUB_LOGIN")}"
+  default = "sa-east-1"  
 }
 
-variable "dockerhub_password" {
+variable "repository_name" {
   type    = string
-  default = "${env("DOCKERHUB_PASSWORD")}"
 }
+
+variable "tags" {
+  type    = list(string)
+  default = ["latest"]
+}
+
 
 variable "helper_script_folder" {
   type    = string
@@ -27,47 +33,34 @@ variable "image_folder" {
   default = "/imagegeneration"
 }
 
-variable "image_os" {
-  type    = string
-  default = "ubuntu22"
-}
-
-variable "image_version" {
-  type    = string
-  default = "dev"
-}
-
-variable "imagedata_file" {
-  type    = string
-  default = "/imagegeneration/imagedata.json"
-}
-
 variable "installer_script_folder" {
   type    = string
   default = "/imagegeneration/installers"
 }
 
-variable "install_password" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
 source "docker" "ubuntu" {
   image  = "ubuntu:22.04"
+  pull = false
   commit = true
 }
 
 build {
   sources = ["source.docker.ubuntu"]
+  name = "selhosted-ubuntu22.04"
 
   provisioner "shell" {
     environment_vars = ["HELPER_SCRIPTS=${var.helper_script_folder}", "DEBIAN_FRONTEND=noninteractive"]
     execute_command = "sh -c '{{ .Vars }} {{ .Path }}'"
     inline = [
       "apt-get update",
-      "apt-get install sudo lsb-release wget curl jq perl unzip software-properties-common -yq",
-      "mkdir -p /usr/share/dotnet/shared"
+      "apt-get install sudo lsb-release wget curl jq perl unzip software-properties-common apt-transport-https ca-certificates parallel rsync mysql-client -yq",
+      "mkdir -p /usr/share/dotnet/shared",
+      "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -",
+      "curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -",
+      "curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list | tee /etc/apt/sources.list.d/msprod.list",
+      "add-apt-repository 'deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable'",
+      "apt-get update",
+      "apt-get install docker-ce docker-ce-cli containerd.io -yq"
     ]
   }
 
@@ -104,6 +97,9 @@ build {
     environment_vars = ["HELPER_SCRIPTS=${var.helper_script_folder}", "INSTALLER_SCRIPT_FOLDER=${var.installer_script_folder}", "DEBIAN_FRONTEND=noninteractive"]
     execute_command  = "sudo sh -c 'yes | {{ .Vars }} {{ .Path }}'"
     scripts          = [
+      # "${path.root}/../scripts/build/install-mysql.sh",
+      "${path.root}/../scripts/build/install-mssql-tools.sh",
+      "${path.root}/../scripts/build/install-dotnetcore-sdk.sh",
       "${path.root}/../scripts/build/install-actions-cache.sh",
       "${path.root}/../scripts/build/install-runner-package.sh",
       "${path.root}/../scripts/build/install-apt-common.sh",
@@ -119,17 +115,16 @@ build {
       "${path.root}/../scripts/build/install-cmake.sh",
       "${path.root}/../scripts/build/install-codeql-bundle.sh",
       "${path.root}/../scripts/build/install-container-tools.sh",
-      # "${path.root}/../scripts/build/install-dotnetcore-sdk.sh",
-      "${path.root}/../scripts/build/install-firefox.sh",
-      "${path.root}/../scripts/build/install-microsoft-edge.sh",
+      # "${path.root}/../scripts/build/install-firefox.sh",
+      # "${path.root}/../scripts/build/install-microsoft-edge.sh",
       "${path.root}/../scripts/build/install-gcc-compilers.sh",
       "${path.root}/../scripts/build/install-gfortran.sh",
       "${path.root}/../scripts/build/install-git.sh",
       "${path.root}/../scripts/build/install-git-lfs.sh",
       "${path.root}/../scripts/build/install-github-cli.sh",
-      "${path.root}/../scripts/build/install-google-chrome.sh",
-      "${path.root}/../scripts/build/install-google-cloud-cli.sh",
-      "${path.root}/../scripts/build/install-haskell.sh",
+      # "${path.root}/../scripts/build/install-google-chrome.sh",
+      # "${path.root}/../scripts/build/install-google-cloud-cli.sh",
+      # "${path.root}/../scripts/build/install-haskell.sh",
       "${path.root}/../scripts/build/install-heroku.sh",
       "${path.root}/../scripts/build/install-java-tools.sh",
       "${path.root}/../scripts/build/install-kubernetes-tools.sh",
@@ -138,8 +133,6 @@ build {
       "${path.root}/../scripts/build/install-miniconda.sh",
       "${path.root}/../scripts/build/install-mono.sh",
       "${path.root}/../scripts/build/install-kotlin.sh",
-      # "${path.root}/../scripts/build/install-mysql.sh",
-      # "${path.root}/../scripts/build/install-mssql-tools.sh",
       "${path.root}/../scripts/build/install-sqlpackage.sh",
       "${path.root}/../scripts/build/install-nginx.sh",
       "${path.root}/../scripts/build/install-nvm.sh",
@@ -158,19 +151,13 @@ build {
       "${path.root}/../scripts/build/install-terraform.sh",
       "${path.root}/../scripts/build/install-packer.sh",
       "${path.root}/../scripts/build/install-vcpkg.sh",
-      "${path.root}/../scripts/build/configure-dpkg.sh",
+      # "${path.root}/../scripts/build/configure-dpkg.sh",
       "${path.root}/../scripts/build/install-yq.sh",
       "${path.root}/../scripts/build/install-android-sdk.sh",
       "${path.root}/../scripts/build/install-pypy.sh",
       "${path.root}/../scripts/build/install-python.sh",
       "${path.root}/../scripts/build/install-zstd.sh"
     ]
-  }
-
-  provisioner "shell" {
-    environment_vars = ["HELPER_SCRIPTS=${var.helper_script_folder}", "INSTALLER_SCRIPT_FOLDER=${var.installer_script_folder}", "DOCKERHUB_LOGIN=${var.dockerhub_login}", "DOCKERHUB_PASSWORD=${var.dockerhub_password}"]
-    execute_command  = "sudo sh -c '{{ .Vars }} {{ .Path }}'"
-    scripts          = ["${path.root}/../scripts/build/install-docker.sh"]
   }
 
   provisioner "shell" {
@@ -185,10 +172,13 @@ build {
     scripts          = ["${path.root}/../scripts/build/install-homebrew.sh"]
   }
 
-  provisioner "shell" {
-    environment_vars = ["HELPER_SCRIPTS=${var.helper_script_folder}"]
-    execute_command  = "sudo sh -c '{{ .Vars }} {{ .Path }}'"
-    scripts          = ["${path.root}/../scripts/build/configure-snap.sh"]
+  post-processors {
+    docker-push {
+      ecr {
+        region           = var.aws_region
+        repository_name  = var.repository_name
+        tag              = var.tags
+      }
+    }
   }
-
 }
